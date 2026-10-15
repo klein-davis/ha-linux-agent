@@ -1,5 +1,5 @@
 {
-  description = "hastat: a Home Assistant MQTT bridge for system/laptop state and control";
+  description = "ha-stat: a Home Assistant MQTT bridge for system/laptop state and control";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -7,13 +7,14 @@
     devenv.url = "github:cachix/devenv";
   };
 
-  outputs = { self, nixpkgs, flake-utils, devenv, ... }@inputs:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs =
+    { self, nixpkgs, flake-utils, devenv, ... }@inputs:
+    (flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
 
-        hastat = pkgs.rustPlatform.buildRustPackage {
-          pname = "hastat";
+        ha-stat = pkgs.rustPlatform.buildRustPackage {
+          pname = "ha-stat";
           version = "0.1.0";
           src = ./.;
           cargoLock = { lockFile = ./Cargo.lock; };
@@ -29,24 +30,24 @@
 
           meta = with pkgs.lib; {
             description = "Expose laptop/system state and controls to Home Assistant over MQTT";
-            homepage = "https://github.com/yourname/hastat";
+            homepage = "https://github.com/yourname/ha-stat";
             license = licenses.mit;
-            mainProgram = "hastat";
+            mainProgram = "ha-stat";
           };
         };
       in
       {
-        packages.default = hastat;
-        packages.hastat = hastat;
+        packages.default = ha-stat;
+        packages.ha-stat = ha-stat;
 
-        apps.default = flake-utils.lib.mkApp { drv = hastat; };
+        apps.default = flake-utils.lib.mkApp { drv = ha-stat; };
 
         checks = {
-          default = hastat; # includes `cargo test` (unit tests) via buildRustPackage's checkPhase
-          hastat = hastat;
+          default = ha-stat; # includes `cargo test` (unit tests) via buildRustPackage's checkPhase
+          ha-stat = ha-stat;
 
-          clippy = hastat.overrideAttrs (old: {
-            pname = "hastat-clippy";
+          clippy = ha-stat.overrideAttrs (old: {
+            pname = "ha-stat-clippy";
             nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
             buildPhase = "true";
             checkPhase = "cargo clippy --all-targets --offline -- -D warnings";
@@ -54,8 +55,8 @@
             installPhase = "mkdir -p $out";
           });
 
-          fmt = hastat.overrideAttrs (old: {
-            pname = "hastat-fmt";
+          fmt = ha-stat.overrideAttrs (old: {
+            pname = "ha-stat-fmt";
             nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.rustfmt ];
             buildPhase = "true";
             checkPhase = "cargo fmt --all -- --check";
@@ -79,9 +80,7 @@
                 mosquitto
               ];
 
-              env.HASTAT_MQTT_HOST = "127.0.0.1";
-              env.HASTAT_MQTT_PORT = "1883";
-              env.RUST_LOG = "hastat=debug,info";
+              env.RUST_LOG = "ha_stat=debug,info";
 
               services.mosquitto = {
                 enable = true;
@@ -90,16 +89,19 @@
               };
 
               enterShell = ''
-                echo "hastat dev shell: cargo build / cargo test / cargo run -- --help"
+                echo "ha-stat dev shell: cargo build / cargo test / cargo run -- --help"
                 echo "mosquitto test broker: run 'devenv up -d' to start it on 127.0.0.1:1883"
                 echo "  then: cargo test -- --include-ignored   (runs the mqtt_integration tests)"
               '';
 
-              scripts.hastat-dev.exec = ''
+              scripts.ha-stat-dev.exec = ''
                 cargo run -- "$@"
               '';
             })
           ];
         };
-      });
+      })) // {
+      homeManagerModules.default = import ./nix/home-manager-module.nix self;
+      homeManagerModules.ha-stat = import ./nix/home-manager-module.nix self;
+    };
 }

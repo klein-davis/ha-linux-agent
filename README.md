@@ -1,4 +1,4 @@
-# hastat
+# ha-stat
 
 Expose your laptop (or any Linux box) to Home Assistant over MQTT: CPU,
 memory, battery, brightness, reachability checks, and anything else you can
@@ -21,51 +21,106 @@ MQTT auto-discovery.
 ## Quick start
 
 ```console
-$ nix run github:yourname/hastat -- check --config ./examples/laptop.toml
-$ nix run github:yourname/hastat -- run --config ./examples/laptop.toml
+$ nix run github:yourname/ha-stat -- check --config ./examples/laptop.toml
+$ nix run github:yourname/ha-stat -- run --config ./examples/laptop.toml
 ```
 
 Or try a single value with no config file at all:
 
 ```console
-$ nix run github:yourname/hastat -- oneshot --builtin cpu_usage
+$ nix run github:yourname/ha-stat -- oneshot --builtin cpu_usage
 3.4
-$ nix run github:yourname/hastat -- oneshot --command "cat /sys/class/thermal/thermal_zone0/temp"
+$ nix run github:yourname/ha-stat -- oneshot --command "cat /sys/class/thermal/thermal_zone0/temp"
 ```
 
 ## Installing
 
-### As a package (NixOS / home-manager)
+ha-stat needs to run as *you*, inside your logged-in session (it talks to
+your Wayland compositor, your D-Bus session, and relies on logind's
+session-scoped permissions for things like backlight brightness). That
+makes it a home-manager concern, not a NixOS system service.
+
+### Recommended: the home-manager module
 
 ```nix
 {
-  inputs.hastat.url = "github:yourname/hastat";
+  inputs.ha-stat.url = "github:yourname/ha-stat";
 
-  # NixOS:
-  environment.systemPackages = [ inputs.hastat.packages.${pkgs.system}.default ];
+  # in your home-manager config:
+  imports = [ inputs.ha-stat.homeManagerModules.default ];
 
-  # or home-manager:
-  home.packages = [ inputs.hastat.packages.${pkgs.system}.default ];
+  services.ha-stat = {
+    enable = true;
+    settings = {
+      device.name = "My Laptop";
+      mqtt = {
+        host = "homeassistant.example.lan";
+        username = "ha-stat";
+        # NEVER put `password` here -- `settings` is rendered into the
+        # world-readable Nix store. Point at a secret deployed outside the
+        # store instead (sops-nix, agenix, a manually-placed file, ...):
+        password_file = "/run/secrets/ha-stat-mqtt-password";
+      };
+      number = [
+        {
+          id = "brightness";
+          read_command = "brightnessctl -m | cut -d, -f4 | tr -d '%'";
+          set_command = "brightnessctl set {value}%";
+          min = 0;
+          max = 100;
+        }
+      ];
+      sensor = [
+        { id = "battery_percent"; builtin = "battery_percent"; unit = "%"; device_class = "battery"; }
+        { id = "cpu_usage"; builtin = "cpu_usage"; unit = "%"; interval = "5s"; }
+      ];
+      binary_sensor = [
+        { id = "charging"; builtin = "charging"; device_class = "battery_charging"; }
+      ];
+    };
+  };
 }
 ```
 
-Then run it as a user service pointed at a declarative config you manage
-with home-manager:
+This wires up `systemd.user.services.ha-stat` for you, pointed at a config
+file generated from `settings` via `pkgs.formats.toml`. Apply the usual
+way (`home-manager switch`), then:
+
+```console
+$ systemctl --user status ha-stat
+$ journalctl --user -u ha-stat -f
+```
+
+**Reloading after a config change**: there's no live-reload — edit
+`settings`, run `home-manager switch` (which regenerates the TOML and
+restarts the unit because the `ExecStart` path, which embeds the config's
+store hash, changed), and that's it. No manual `systemctl restart` needed.
+
+### Alternative: plain package + your own service
+
+If you don't want the module (e.g. not using home-manager, or you'd
+rather hand-manage the TOML file):
 
 ```nix
 {
-  xdg.configFile."hastat/config.toml".source = ./hastat-config.toml;
+  inputs.ha-stat.url = "github:yourname/ha-stat";
+  home.packages = [ inputs.ha-stat.packages.${pkgs.system}.default ];
+  xdg.configFile."ha-stat/config.toml".source = ./ha-stat-config.toml;
 
-  systemd.user.services.hastat = {
+  systemd.user.services.ha-stat = {
     Unit.Description = "Home Assistant MQTT bridge";
     Install.WantedBy = [ "default.target" ];
     Service = {
-      ExecStart = "${pkgs.hastat}/bin/hastat run --config %h/.config/hastat/config.toml";
+      ExecStart = "${inputs.ha-stat.packages.${pkgs.system}.default}/bin/ha-stat run --config %h/.config/ha-stat/config.toml";
       Restart = "on-failure";
     };
   };
 }
 ```
+
+Here, since the config is a plain file (not generated from `settings`),
+editing it does need an explicit `systemctl --user restart ha-stat` to
+take effect.
 
 ### As a dev shell (no install)
 
@@ -92,8 +147,14 @@ name = "My Laptop"          # shows up in HA; also used to derive the slug id
 host = "127.0.0.1"
 port = 1883
 # username = "..."
-# password = "..."
-base_topic = "hastat"               # default
+# password = "..."           # plaintext; fine in a plain file you keep out of git
+# password_file = "/run/secrets/ha-stat-mqtt-password"  # preferred if this
+                                                           # TOML ends up somewhere
+                                                           # world-readable (e.g. the
+                                                           # Nix store, via the
+                                                           # home-manager module's
+                                                           # `settings`)
+base_topic = "ha-stat"               # default
 discovery_prefix = "homeassistant"  # default
 ```
 
@@ -232,12 +293,12 @@ device_class = "restart"
 
 ## CLI
 
-- `hastat run --config <path>` — the daemon: connects to MQTT, publishes
+- `ha-stat run --config <path>` — the daemon: connects to MQTT, publishes
   discovery, polls every readable entity, and handles incoming commands.
-- `hastat check --config <path>` — parses the config and lists every
+- `ha-stat check --config <path>` — parses the config and lists every
   entity it would create, without touching MQTT. Good for CI and for
   `devenv`'s dev loop.
-- `hastat oneshot [--builtin NAME | --command CMD] [--publish-topic TOPIC --host .. --port ..]`
+- `ha-stat oneshot [--builtin NAME | --command CMD] [--publish-topic TOPIC --host .. --port ..]`
   — a single ad-hoc read, for scratch use with no config file. Prints the
   value, or publishes it once if `--publish-topic` is given.
 
