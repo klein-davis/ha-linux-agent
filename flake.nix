@@ -59,7 +59,6 @@
                 pkg-config
                 openssl
                 mosquitto
-                mosquitto-clients
               ];
 
               env.HASTAT_MQTT_HOST = "127.0.0.1";
@@ -68,21 +67,14 @@
 
               services.mosquitto = {
                 enable = true;
-                listeners = [
-                  {
-                    type = "ip";
-                    port = 1883;
-                    address = "127.0.0.1";
-                    users = { };
-                    omitPasswordAuth = true;
-                    settings.allow_anonymous = true;
-                  }
-                ];
+                bind = "127.0.0.1";
+                port = 1883;
               };
 
               enterShell = ''
                 echo "hastat dev shell: cargo build / cargo test / cargo run -- --help"
-                echo "mosquitto test broker: 127.0.0.1:1883 (started by devenv)"
+                echo "mosquitto test broker: run 'devenv up -d' to start it on 127.0.0.1:1883"
+                echo "  then: cargo test -- --include-ignored   (runs the mqtt_integration tests)"
               '';
 
               scripts.hastat-dev.exec = ''
