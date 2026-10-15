@@ -27,7 +27,7 @@ fn default_discovery_prefix() -> String {
     "homeassistant".to_string()
 }
 fn default_base_topic() -> String {
-    "ha-stat".to_string()
+    "ha-linux-agent".to_string()
 }
 fn default_interval() -> String {
     "30s".to_string()
@@ -55,7 +55,7 @@ pub struct MqttConfig {
     pub password: Option<String>,
     /// Path to a file whose (trimmed) contents are the MQTT password, read
     /// at startup. Use this instead of `password` when `settings.mqtt` is
-    /// rendered into the Nix store (as the ha-stat home-manager module
+    /// rendered into the Nix store (as the ha-linux-agent home-manager module
     /// does), so the secret itself can live outside the store (sops-nix,
     /// agenix, or just a manually-deployed file with tight permissions).
     pub password_file: Option<String>,
@@ -178,6 +178,24 @@ pub struct RawButton {
     command: String,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct RawNotify {
+    #[serde(flatten)]
+    common: CommonFields,
+    /// Passed to `notify-send -a`. Ignored if `command` is set.
+    app_name: Option<String>,
+    /// Passed to `notify-send -u` (low | normal | critical). Ignored if `command` is set.
+    urgency: Option<String>,
+    /// Passed to `notify-send -t <ms>`. Ignored if `command` is set.
+    expire_ms: Option<u32>,
+    /// Fully custom delivery command instead of `notify-send`; `{title}`
+    /// and `{message}` are substituted in (run via a shell, like every
+    /// other custom command in this app -- same trust model as
+    /// `set_command`/`on_command` elsewhere: only wire this to a config
+    /// you trust the contents of).
+    command: Option<String>,
+}
+
 #[derive(Debug, Deserialize, Clone, Default)]
 pub struct RawConfig {
     pub device: DeviceConfig,
@@ -195,6 +213,8 @@ pub struct RawConfig {
     pub lock: Vec<RawLock>,
     #[serde(default)]
     pub button: Vec<RawButton>,
+    #[serde(default)]
+    pub notify: Vec<RawNotify>,
 }
 
 fn humanize_id(id: &str) -> String {
@@ -246,6 +266,9 @@ impl RawConfig {
         }
         for btn in &self.button {
             entities.push(build_button(btn)?);
+        }
+        for n in &self.notify {
+            entities.push(build_notify(n)?);
         }
         if entities.is_empty() {
             bail!("config declares no entities (no [[sensor]], [[switch]], ... sections)");
@@ -473,6 +496,17 @@ fn build_button(raw: &RawButton) -> Result<Entity> {
     Ok(entity)
 }
 
+fn build_notify(raw: &RawNotify) -> Result<Entity> {
+    let mut entity = base(&raw.common, Component::Notify)?;
+    entity.sink = Some(Box::new(crate::notify::NotifySink {
+        app_name: raw.app_name.clone(),
+        urgency: raw.urgency.clone(),
+        expire_ms: raw.expire_ms,
+        command: raw.command.clone(),
+    }));
+    Ok(entity)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -517,6 +551,11 @@ unlock_command = "echo unlock"
 [[button]]
 id = "reboot"
 command = "echo reboot"
+
+[[notify]]
+id = "alert"
+app_name = "Home Assistant"
+urgency = "critical"
 "#;
 
     #[test]
@@ -525,7 +564,10 @@ command = "echo reboot"
         assert_eq!(cfg.device.name, "My Laptop");
         assert_eq!(cfg.device_id(), "my-laptop");
         let entities = cfg.build_entities().unwrap();
-        assert_eq!(entities.len(), 7);
+        assert_eq!(entities.len(), 8);
+        let notify = entities.iter().find(|e| e.id == "alert").unwrap();
+        assert!(notify.is_writable());
+        assert!(!notify.is_readable());
         let screen = entities.iter().find(|e| e.id == "screen").unwrap();
         assert!(screen.is_writable());
         assert!(!screen.is_readable());

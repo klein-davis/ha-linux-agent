@@ -1,4 +1,4 @@
-# ha-stat
+# ha-linux-agent
 
 Expose your laptop (or any Linux box) to Home Assistant over MQTT: CPU,
 memory, battery, brightness, reachability checks, and anything else you can
@@ -16,26 +16,29 @@ MQTT auto-discovery.
   in Home Assistant, named whatever you like.
 - **Every HA entity shape**: read-only sensors/binary_sensors, read-write
   numbers (dimmer-style sliders) and switches, locks, and write-only
-  buttons.
+  buttons/notify entities.
+- **HA → your notification daemon**: call `notify.<id>` from an HA
+  automation with a title/message and it lands as a desktop notification
+  (dunst/mako/etc. via `notify-send`) on your machine.
 
 ## Quick start
 
 ```console
-$ nix run github:yourname/ha-stat -- check --config ./examples/laptop.toml
-$ nix run github:yourname/ha-stat -- run --config ./examples/laptop.toml
+$ nix run github:yourname/ha-linux-agent -- check --config ./examples/laptop.toml
+$ nix run github:yourname/ha-linux-agent -- run --config ./examples/laptop.toml
 ```
 
 Or try a single value with no config file at all:
 
 ```console
-$ nix run github:yourname/ha-stat -- oneshot --builtin cpu_usage
+$ nix run github:yourname/ha-linux-agent -- oneshot --builtin cpu_usage
 3.4
-$ nix run github:yourname/ha-stat -- oneshot --command "cat /sys/class/thermal/thermal_zone0/temp"
+$ nix run github:yourname/ha-linux-agent -- oneshot --command "cat /sys/class/thermal/thermal_zone0/temp"
 ```
 
 ## Installing
 
-ha-stat needs to run as *you*, inside your logged-in session (it talks to
+ha-linux-agent needs to run as *you*, inside your logged-in session (it talks to
 your Wayland compositor, your D-Bus session, and relies on logind's
 session-scoped permissions for things like backlight brightness). That
 makes it a home-manager concern, not a NixOS system service.
@@ -44,22 +47,22 @@ makes it a home-manager concern, not a NixOS system service.
 
 ```nix
 {
-  inputs.ha-stat.url = "github:yourname/ha-stat";
+  inputs.ha-linux-agent.url = "github:yourname/ha-linux-agent";
 
   # in your home-manager config:
-  imports = [ inputs.ha-stat.homeManagerModules.default ];
+  imports = [ inputs.ha-linux-agent.homeManagerModules.default ];
 
-  services.ha-stat = {
+  services.ha-linux-agent = {
     enable = true;
     settings = {
       device.name = "My Laptop";
       mqtt = {
         host = "homeassistant.example.lan";
-        username = "ha-stat";
+        username = "ha-linux-agent";
         # NEVER put `password` here -- `settings` is rendered into the
         # world-readable Nix store. Point at a secret deployed outside the
         # store instead (sops-nix, agenix, a manually-placed file, ...):
-        password_file = "/run/secrets/ha-stat-mqtt-password";
+        password_file = "/run/secrets/ha-linux-agent-mqtt-password";
       };
       number = [
         {
@@ -82,13 +85,13 @@ makes it a home-manager concern, not a NixOS system service.
 }
 ```
 
-This wires up `systemd.user.services.ha-stat` for you, pointed at a config
+This wires up `systemd.user.services.ha-linux-agent` for you, pointed at a config
 file generated from `settings` via `pkgs.formats.toml`. Apply the usual
 way (`home-manager switch`), then:
 
 ```console
-$ systemctl --user status ha-stat
-$ journalctl --user -u ha-stat -f
+$ systemctl --user status ha-linux-agent
+$ journalctl --user -u ha-linux-agent -f
 ```
 
 **Reloading after a config change**: there's no live-reload — edit
@@ -103,15 +106,15 @@ rather hand-manage the TOML file):
 
 ```nix
 {
-  inputs.ha-stat.url = "github:yourname/ha-stat";
-  home.packages = [ inputs.ha-stat.packages.${pkgs.system}.default ];
-  xdg.configFile."ha-stat/config.toml".source = ./ha-stat-config.toml;
+  inputs.ha-linux-agent.url = "github:yourname/ha-linux-agent";
+  home.packages = [ inputs.ha-linux-agent.packages.${pkgs.system}.default ];
+  xdg.configFile."ha-linux-agent/config.toml".source = ./ha-linux-agent-config.toml;
 
-  systemd.user.services.ha-stat = {
+  systemd.user.services.ha-linux-agent = {
     Unit.Description = "Home Assistant MQTT bridge";
     Install.WantedBy = [ "default.target" ];
     Service = {
-      ExecStart = "${inputs.ha-stat.packages.${pkgs.system}.default}/bin/ha-stat run --config %h/.config/ha-stat/config.toml";
+      ExecStart = "${inputs.ha-linux-agent.packages.${pkgs.system}.default}/bin/ha-linux-agent run --config %h/.config/ha-linux-agent/config.toml";
       Restart = "on-failure";
     };
   };
@@ -119,7 +122,7 @@ rather hand-manage the TOML file):
 ```
 
 Here, since the config is a plain file (not generated from `settings`),
-editing it does need an explicit `systemctl --user restart ha-stat` to
+editing it does need an explicit `systemctl --user restart ha-linux-agent` to
 take effect.
 
 ### As a dev shell (no install)
@@ -148,13 +151,13 @@ host = "127.0.0.1"
 port = 1883
 # username = "..."
 # password = "..."           # plaintext; fine in a plain file you keep out of git
-# password_file = "/run/secrets/ha-stat-mqtt-password"  # preferred if this
+# password_file = "/run/secrets/ha-linux-agent-mqtt-password"  # preferred if this
                                                            # TOML ends up somewhere
                                                            # world-readable (e.g. the
                                                            # Nix store, via the
                                                            # home-manager module's
                                                            # `settings`)
-base_topic = "ha-stat"               # default
+base_topic = "ha-linux-agent"               # default
 discovery_prefix = "homeassistant"  # default
 ```
 
@@ -291,14 +294,56 @@ command = "systemctl reboot"
 device_class = "restart"
 ```
 
+### `[[notify]]` — write-only (HA `notify` entity: title + rich-ish text)
+
+Shows up in HA as `notify.<id>`, callable from automations/scripts/the
+Developer Tools "Call Service" UI with a title and message:
+
+```yaml
+action: notify.send_message
+target:
+  entity_id: notify.alert
+data:
+  title: "Build failed"
+  message: "ci/deploy.yml failed on main"
+```
+
+```toml
+[[notify]]
+id = "alert"
+app_name = "Home Assistant"   # optional; notify-send -a
+urgency = "critical"          # optional; low | normal | critical
+expire_ms = 5000               # optional; notify-send -t
+```
+
+By default this calls `notify-send <title> <message>` directly via argv
+(no shell involved, so whatever HA sends can't break out into a shell
+command) — works with dunst, mako, or anything else providing a
+freedesktop notification daemon. We set our own `command_template` in
+the HA discovery payload so HA always sends structured
+`{"title": ..., "message": ...}` JSON, regardless of how the automation
+call filled those fields in.
+
+If you need something other than `notify-send` (a custom script, piping
+into a different daemon, ...), set `command` instead — `{title}` and
+`{message}` get substituted into it and the whole thing runs through a
+shell, same trust model as `set_command`/`on_command` elsewhere in this
+config (only point it at something you trust the content of):
+
+```toml
+[[notify]]
+id = "alert"
+command = "my-notify-script '{title}' '{message}'"
+```
+
 ## CLI
 
-- `ha-stat run --config <path>` — the daemon: connects to MQTT, publishes
+- `ha-linux-agent run --config <path>` — the daemon: connects to MQTT, publishes
   discovery, polls every readable entity, and handles incoming commands.
-- `ha-stat check --config <path>` — parses the config and lists every
+- `ha-linux-agent check --config <path>` — parses the config and lists every
   entity it would create, without touching MQTT. Good for CI and for
   `devenv`'s dev loop.
-- `ha-stat oneshot [--builtin NAME | --command CMD] [--publish-topic TOPIC --host .. --port ..]`
+- `ha-linux-agent oneshot [--builtin NAME | --command CMD] [--publish-topic TOPIC --host .. --port ..]`
   — a single ad-hoc read, for scratch use with no config file. Prints the
   value, or publishes it once if `--publish-topic` is given.
 

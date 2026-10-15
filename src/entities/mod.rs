@@ -42,6 +42,7 @@ pub enum Component {
     Switch,
     Lock,
     Button,
+    Notify,
 }
 
 impl Component {
@@ -53,6 +54,7 @@ impl Component {
             Component::Switch => "switch",
             Component::Lock => "lock",
             Component::Button => "button",
+            Component::Notify => "notify",
         }
     }
 }

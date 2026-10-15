@@ -92,6 +92,13 @@ pub fn discovery_payload(
             payload["payload_on"] = json!("ON");
             payload["payload_off"] = json!("OFF");
         }
+        Component::Notify => {
+            // Ask HA to send structured {"title": ..., "message": ...}
+            // JSON instead of just the raw message string, so NotifySink
+            // can always pull both fields out.
+            payload["command_template"] =
+                json!("{{ {\"title\": title, \"message\": message} | tojson }}");
+        }
         Component::Button | Component::Sensor => {}
     }
 
@@ -128,7 +135,7 @@ mod tests {
             password: None,
             password_file: None,
             discovery_prefix: "homeassistant".into(),
-            base_topic: "ha-stat".into(),
+            base_topic: "ha-linux-agent".into(),
             client_id: None,
             discovery: true,
         }
@@ -167,12 +174,12 @@ mod tests {
         let ro = entity("cpu", Component::Sensor, false, true);
         let t = topics_for(&mqtt, "laptop", &ro);
         assert!(t.command.is_none());
-        assert_eq!(t.state, "ha-stat/laptop/cpu/state");
+        assert_eq!(t.state, "ha-linux-agent/laptop/cpu/state");
         assert_eq!(t.discovery, "homeassistant/sensor/laptop/cpu/config");
 
         let rw = entity("screen", Component::Switch, true, false);
         let t2 = topics_for(&mqtt, "laptop", &rw);
-        assert_eq!(t2.command.unwrap(), "ha-stat/laptop/screen/set");
+        assert_eq!(t2.command.unwrap(), "ha-linux-agent/laptop/screen/set");
     }
 
     #[test]
@@ -205,5 +212,23 @@ mod tests {
         assert_eq!(payload["min"], 0.0);
         assert_eq!(payload["max"], 100.0);
         assert_eq!(payload["step"], 1.0);
+    }
+
+    #[test]
+    fn notify_has_command_topic_and_template_but_no_state_topic() {
+        let mqtt = mqtt();
+        let device = DeviceConfig {
+            name: "Laptop".into(),
+            ..Default::default()
+        };
+        let notify = entity("alert", Component::Notify, true, false);
+        let topics = topics_for(&mqtt, "laptop", &notify);
+        let payload = discovery_payload(&device, "laptop", &mqtt, &notify, &topics);
+        assert_eq!(payload["command_topic"], "ha-linux-agent/laptop/alert/set");
+        assert!(payload.get("state_topic").is_none());
+        assert!(payload["command_template"]
+            .as_str()
+            .unwrap()
+            .contains("tojson"));
     }
 }
