@@ -25,7 +25,7 @@ in
 
     package = lib.mkOption {
       type = lib.types.package;
-      default = self.packages.${pkgs.system}.default;
+      default = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
       defaultText = lib.literalExpression "ha-linux-agent.packages.<system>.default";
       description = "The ha-linux-agent package to run.";
     };
