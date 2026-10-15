@@ -1,0 +1,109 @@
+# Example hastat config: covers every entity type and most builtins.
+# Copy this, trim what you don't want, and point real screen/lock commands
+# at whatever your compositor/locker actually uses.
+
+[device]
+name = "My Laptop"
+
+[mqtt]
+host = "127.0.0.1"
+port = 1883
+# username = "hastat"
+# password = "changeme"
+
+# --- read-only sensors --------------------------------------------------
+
+[[sensor]]
+id = "cpu_usage"
+builtin = "cpu_usage"
+unit = "%"
+interval = "5s"
+
+[[sensor]]
+id = "memory_usage"
+builtin = "memory_usage"
+unit = "%"
+interval = "10s"
+
+[[sensor]]
+id = "uptime"
+builtin = "uptime"
+unit = "s"
+device_class = "duration"
+interval = "60s"
+
+[[sensor]]
+id = "battery_percent"
+builtin = "battery_percent"
+unit = "%"
+device_class = "battery"
+interval = "30s"
+
+[[sensor]]
+id = "disk_root"
+builtin = "disk_usage"
+path = "/"
+unit = "%"
+interval = "5m"
+
+[[sensor]]
+id = "cpu_temp"
+command = "cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null | awk '{print $1/1000}'"
+unit = "°C"
+device_class = "temperature"
+interval = "10s"
+
+# --- read-only binary sensors -------------------------------------------
+
+[[binary_sensor]]
+id = "charging"
+builtin = "charging"
+device_class = "battery_charging"
+
+[[binary_sensor]]
+id = "on_ac_power"
+builtin = "ac_connected"
+device_class = "plug"
+
+[[binary_sensor]]
+id = "router_reachable"
+builtin = "ping"
+interface_regex = "^wl.*"
+target = "192.168.1.1"
+count = 2
+success_mode = "any"
+device_class = "connectivity"
+
+# --- read-write number (dimmer-style) -----------------------------------
+
+[[number]]
+id = "brightness"
+builtin = "brightness"
+min = 0
+max = 100
+step = 5
+
+# --- read-write switch ---------------------------------------------------
+# Adjust for your compositor; this example assumes Hyprland.
+
+[[switch]]
+id = "screen"
+read_command = "hyprctl monitors -j | grep -q '\"dpmsStatus\": true' && echo on || echo off"
+on_command = "hyprctl dispatch dpms on"
+off_command = "hyprctl dispatch dpms off"
+
+# --- lock (e.g. noctalia/hyprlock/swaylock) ------------------------------
+# Replace with your locker's real lock/unlock/status commands.
+
+[[lock]]
+id = "session"
+lock_command = "loginctl lock-session"
+unlock_command = "loginctl unlock-session"
+state_command = "loginctl show-session self -p LockedHint --value"
+
+# --- write-only button ----------------------------------------------------
+
+[[button]]
+id = "reboot"
+command = "systemctl reboot"
+device_class = "restart"
