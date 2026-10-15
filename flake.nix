@@ -16,19 +16,16 @@
           pname = "hastat";
           version = "0.1.0";
           src = ./.;
-          cargoLock = ./Cargo.lock;
+          cargoLock = { lockFile = ./Cargo.lock; };
 
           nativeBuildInputs = [ pkgs.pkg-config ];
           buildInputs = [ pkgs.openssl ];
 
-          # Integration tests need a live MQTT broker (provided by the devenv
-          # shell / mosquitto) and real backlight/network devices, so they are
-          # excluded from the sandboxed package build and run separately via
-          # `nix flake check` / `devenv test`.
-          checkFlags = [
-            "--skip=mqtt_integration"
-            "--skip=live_"
-          ];
+          # tests/mqtt_integration.rs is #[ignore]d: it needs a live MQTT
+          # broker, which isn't available in the build sandbox. `cargo test`
+          # skips #[ignore]d tests by default, so no extra flags are needed
+          # here; run it explicitly with `cargo test -- --ignored` inside
+          # the devShell once `devenv up -d` has started mosquitto.
 
           meta = with pkgs.lib; {
             description = "Expose laptop/system state and controls to Home Assistant over MQTT";
@@ -44,7 +41,28 @@
 
         apps.default = flake-utils.lib.mkApp { drv = hastat; };
 
-        checks.default = hastat;
+        checks = {
+          default = hastat; # includes `cargo test` (unit tests) via buildRustPackage's checkPhase
+          hastat = hastat;
+
+          clippy = hastat.overrideAttrs (old: {
+            pname = "hastat-clippy";
+            nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
+            buildPhase = "true";
+            checkPhase = "cargo clippy --all-targets --offline -- -D warnings";
+            doCheck = true;
+            installPhase = "mkdir -p $out";
+          });
+
+          fmt = hastat.overrideAttrs (old: {
+            pname = "hastat-fmt";
+            nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.rustfmt ];
+            buildPhase = "true";
+            checkPhase = "cargo fmt --all -- --check";
+            doCheck = true;
+            installPhase = "mkdir -p $out";
+          });
+        };
 
         devShells.default = devenv.lib.mkShell {
           inherit inputs pkgs;
