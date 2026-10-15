@@ -1,16 +1,16 @@
 [package]
-name = "ha-stat"
+name = "ha-linux-agent"
 version = "0.1.0"
 edition = "2021"
 description = "A Home Assistant MQTT bridge for exposing laptop/system state and controls as HA entities"
 license = "MIT"
 
 [lib]
-name = "ha_stat"
+name = "ha_linux_agent"
 path = "src/lib.rs"
 
 [[bin]]
-name = "ha-stat"
+name = "ha-linux-agent"
 path = "src/main.rs"
 
 [dependencies]

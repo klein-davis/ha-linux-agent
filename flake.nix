@@ -1,5 +1,5 @@
 {
-  description = "ha-stat: a Home Assistant MQTT bridge for system/laptop state and control";
+  description = "ha-linux-agent: a Home Assistant MQTT bridge for system/laptop state and control";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -13,8 +13,8 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
 
-        ha-stat = pkgs.rustPlatform.buildRustPackage {
-          pname = "ha-stat";
+        ha-linux-agent = pkgs.rustPlatform.buildRustPackage {
+          pname = "ha-linux-agent";
           version = "0.1.0";
           src = ./.;
           cargoLock = { lockFile = ./Cargo.lock; };
@@ -30,24 +30,24 @@
 
           meta = with pkgs.lib; {
             description = "Expose laptop/system state and controls to Home Assistant over MQTT";
-            homepage = "https://github.com/yourname/ha-stat";
+            homepage = "https://github.com/yourname/ha-linux-agent";
             license = licenses.mit;
-            mainProgram = "ha-stat";
+            mainProgram = "ha-linux-agent";
           };
         };
       in
       {
-        packages.default = ha-stat;
-        packages.ha-stat = ha-stat;
+        packages.default = ha-linux-agent;
+        packages.ha-linux-agent = ha-linux-agent;
 
-        apps.default = flake-utils.lib.mkApp { drv = ha-stat; };
+        apps.default = flake-utils.lib.mkApp { drv = ha-linux-agent; };
 
         checks = {
-          default = ha-stat; # includes `cargo test` (unit tests) via buildRustPackage's checkPhase
-          ha-stat = ha-stat;
+          default = ha-linux-agent; # includes `cargo test` (unit tests) via buildRustPackage's checkPhase
+          ha-linux-agent = ha-linux-agent;
 
-          clippy = ha-stat.overrideAttrs (old: {
-            pname = "ha-stat-clippy";
+          clippy = ha-linux-agent.overrideAttrs (old: {
+            pname = "ha-linux-agent-clippy";
             nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
             buildPhase = "true";
             checkPhase = "cargo clippy --all-targets --offline -- -D warnings";
@@ -55,8 +55,8 @@
             installPhase = "mkdir -p $out";
           });
 
-          fmt = ha-stat.overrideAttrs (old: {
-            pname = "ha-stat-fmt";
+          fmt = ha-linux-agent.overrideAttrs (old: {
+            pname = "ha-linux-agent-fmt";
             nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.rustfmt ];
             buildPhase = "true";
             checkPhase = "cargo fmt --all -- --check";
@@ -80,7 +80,7 @@
                 mosquitto
               ];
 
-              env.RUST_LOG = "ha_stat=debug,info";
+              env.RUST_LOG = "ha_linux_agent=debug,info";
 
               services.mosquitto = {
                 enable = true;
@@ -89,12 +89,12 @@
               };
 
               enterShell = ''
-                echo "ha-stat dev shell: cargo build / cargo test / cargo run -- --help"
+                echo "ha-linux-agent dev shell: cargo build / cargo test / cargo run -- --help"
                 echo "mosquitto test broker: run 'devenv up -d' to start it on 127.0.0.1:1883"
                 echo "  then: cargo test -- --include-ignored   (runs the mqtt_integration tests)"
               '';
 
-              scripts.ha-stat-dev.exec = ''
+              scripts.ha-linux-agent-dev.exec = ''
                 cargo run -- "$@"
               '';
             })
@@ -102,6 +102,6 @@
         };
       })) // {
       homeManagerModules.default = import ./nix/home-manager-module.nix self;
-      homeManagerModules.ha-stat = import ./nix/home-manager-module.nix self;
+      homeManagerModules.ha-linux-agent = import ./nix/home-manager-module.nix self;
     };
 }

@@ -1,7 +1,7 @@
-# home-manager module for ha-stat: `services.ha-stat.enable` + `.settings`,
+# home-manager module for ha-linux-agent: `services.ha-linux-agent.enable` + `.settings`,
 # mirroring the enable/settings shape of services.immich-public-proxy etc.
 #
-# ha-stat runs as *you*, in your logged-in session -- it needs your Wayland
+# ha-linux-agent runs as *you*, in your logged-in session -- it needs your Wayland
 # compositor, your D-Bus session, and the logind-ACL'd permissions on
 # backlight/battery sysfs that only apply to the active session user. That's
 # why this is a home-manager module (systemd --user service) rather than a
@@ -15,28 +15,28 @@ self:
   ...
 }:
 let
-  cfg = config.services.ha-stat;
+  cfg = config.services.ha-linux-agent;
   format = pkgs.formats.toml { };
-  configFile = format.generate "ha-stat-config.toml" cfg.settings;
+  configFile = format.generate "ha-linux-agent-config.toml" cfg.settings;
 in
 {
-  options.services.ha-stat = {
-    enable = lib.mkEnableOption "ha-stat, a Home Assistant MQTT bridge for this session";
+  options.services.ha-linux-agent = {
+    enable = lib.mkEnableOption "ha-linux-agent, a Home Assistant MQTT bridge for this session";
 
     package = lib.mkOption {
       type = lib.types.package;
       default = self.packages.${pkgs.system}.default;
-      defaultText = lib.literalExpression "ha-stat.packages.<system>.default";
-      description = "The ha-stat package to run.";
+      defaultText = lib.literalExpression "ha-linux-agent.packages.<system>.default";
+      description = "The ha-linux-agent package to run.";
     };
 
     settings = lib.mkOption {
       type = lib.types.submodule { freeformType = format.type; };
       default = { };
       description = ''
-        ha-stat's declarative config: `device`, `mqtt`, and any number of
+        ha-linux-agent's declarative config: `device`, `mqtt`, and any number of
         `sensor` / `binary_sensor` / `number` / `switch` / `lock` / `button`
-        entries. See the ha-stat README for the full schema.
+        entries. See the ha-linux-agent README for the full schema.
 
         **Do not put `settings.mqtt.password` here.** This gets rendered
         into the Nix store via `pkgs.formats.toml`, which is world-readable
@@ -50,8 +50,8 @@ in
           device.name = "My Laptop";
           mqtt = {
             host = "homeassistant.example.lan";
-            username = "ha-stat";
-            password_file = config.sops.secrets.ha-stat-mqtt-password.path;
+            username = "ha-linux-agent";
+            password_file = config.sops.secrets.ha-linux-agent-mqtt-password.path;
           };
           number = [
             {
@@ -75,8 +75,8 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    systemd.user.services.ha-stat = {
-      Unit.Description = "ha-stat: Home Assistant MQTT bridge";
+    systemd.user.services.ha-linux-agent = {
+      Unit.Description = "ha-linux-agent: Home Assistant MQTT bridge";
       Install.WantedBy = [ "default.target" ];
       Service = {
         ExecStart = "${lib.getExe cfg.package} run --config ${configFile}";

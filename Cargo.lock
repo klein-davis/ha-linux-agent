@@ -289,7 +289,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ha-stat"
+name = "ha-linux-agent"
 version = "0.1.0"
 dependencies = [
  "anyhow",
