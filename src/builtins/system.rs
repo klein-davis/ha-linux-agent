@@ -22,6 +22,12 @@ pub struct CpuUsageSource {
     prev: Mutex<Option<(u64, u64)>>, // (idle, total)
 }
 
+impl Default for CpuUsageSource {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CpuUsageSource {
     pub fn new() -> Self {
         Self {

@@ -5,6 +5,10 @@ edition = "2021"
 description = "A Home Assistant MQTT bridge for exposing laptop/system state and controls as HA entities"
 license = "MIT"
 
+[lib]
+name = "hastat"
+path = "src/lib.rs"
+
 [[bin]]
 name = "hastat"
 path = "src/main.rs"

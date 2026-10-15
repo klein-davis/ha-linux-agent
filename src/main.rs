@@ -1,13 +1,7 @@
-mod builtins;
-mod config;
-mod custom;
-mod discovery;
-mod entities;
-mod mqtt;
-
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
-use entities::Source;
+use hastat::entities::Source;
+use hastat::{builtins, config, custom, mqtt};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
