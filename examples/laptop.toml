@@ -1,4 +1,4 @@
-# Example hastat config: covers every entity type and most builtins.
+# Example ha-stat config: covers every entity type and most builtins.
 # Copy this, trim what you don't want, and point real screen/lock commands
 # at whatever your compositor/locker actually uses.
 
@@ -8,7 +8,7 @@ name = "My Laptop"
 [mqtt]
 host = "127.0.0.1"
 port = 1883
-# username = "hastat"
+# username = "ha-stat"
 # password = "changeme"
 
 # --- read-only sensors --------------------------------------------------

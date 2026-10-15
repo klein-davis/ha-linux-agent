@@ -126,8 +126,9 @@ mod tests {
             port: 1883,
             username: None,
             password: None,
+            password_file: None,
             discovery_prefix: "homeassistant".into(),
-            base_topic: "hastat".into(),
+            base_topic: "ha-stat".into(),
             client_id: None,
             discovery: true,
         }
@@ -166,12 +167,12 @@ mod tests {
         let ro = entity("cpu", Component::Sensor, false, true);
         let t = topics_for(&mqtt, "laptop", &ro);
         assert!(t.command.is_none());
-        assert_eq!(t.state, "hastat/laptop/cpu/state");
+        assert_eq!(t.state, "ha-stat/laptop/cpu/state");
         assert_eq!(t.discovery, "homeassistant/sensor/laptop/cpu/config");
 
         let rw = entity("screen", Component::Switch, true, false);
         let t2 = topics_for(&mqtt, "laptop", &rw);
-        assert_eq!(t2.command.unwrap(), "hastat/laptop/screen/set");
+        assert_eq!(t2.command.unwrap(), "ha-stat/laptop/screen/set");
     }
 
     #[test]

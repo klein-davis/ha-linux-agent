@@ -7,7 +7,7 @@
 //!
 //! Override HASTAT_TEST_MQTT_HOST/PORT to point at a different broker.
 
-use hastat::config::RawConfig;
+use ha_stat::config::RawConfig;
 use rumqttc::{AsyncClient, Event, MqttOptions, Packet, QoS};
 use std::time::Duration;
 use tokio::time::timeout;
@@ -40,16 +40,16 @@ interval = "1s"
 
 [[switch]]
 id = "flag"
-read_command = "cat /tmp/hastat-test-flag 2>/dev/null || echo 0"
-on_command = "echo on > /tmp/hastat-test-flag"
-off_command = "echo off > /tmp/hastat-test-flag"
+read_command = "cat /tmp/ha-stat-test-flag 2>/dev/null || echo 0"
+on_command = "echo on > /tmp/ha-stat-test-flag"
+off_command = "echo off > /tmp/ha-stat-test-flag"
 "#
     );
     RawConfig::from_toml_str(&toml).expect("test config must parse")
 }
 
 async fn connect_test_client(host: &str, port: u16) -> (AsyncClient, rumqttc::EventLoop) {
-    let client_id = format!("hastat-test-{}", std::process::id());
+    let client_id = format!("ha-stat-test-{}", std::process::id());
     let opts = MqttOptions::new(client_id, host, port);
     AsyncClient::new(opts, 32)
 }
@@ -58,11 +58,11 @@ async fn connect_test_client(host: &str, port: u16) -> (AsyncClient, rumqttc::Ev
 #[ignore = "requires a live MQTT broker; see module docs"]
 async fn daemon_publishes_discovery_and_state_and_handles_commands() {
     let (host, port) = broker();
-    let base_topic = format!("hastat-test-{}", std::process::id());
-    let _ = std::fs::remove_file("/tmp/hastat-test-flag");
+    let base_topic = format!("ha-stat-test-{}", std::process::id());
+    let _ = std::fs::remove_file("/tmp/ha-stat-test-flag");
 
     let config = test_config(&host, port, &base_topic);
-    tokio::spawn(hastat::mqtt::run_daemon(config));
+    tokio::spawn(ha_stat::mqtt::run_daemon(config));
 
     let (client, mut eventloop) = connect_test_client(&host, port).await;
     client
@@ -123,7 +123,7 @@ async fn daemon_publishes_discovery_and_state_and_handles_commands() {
     assert!(saw_availability_online, "never saw availability == online");
 
     // Now exercise the write path: command the switch on, and expect its
-    // on_command side effect (writing /tmp/hastat-test-flag) to happen.
+    // on_command side effect (writing /tmp/ha-stat-test-flag) to happen.
     client
         .publish(
             format!("{base_topic}/it-laptop/flag/set"),
@@ -136,7 +136,7 @@ async fn daemon_publishes_discovery_and_state_and_handles_commands() {
 
     let flag_result = timeout(Duration::from_secs(10), async {
         loop {
-            if let Ok(content) = tokio::fs::read_to_string("/tmp/hastat-test-flag").await {
+            if let Ok(content) = tokio::fs::read_to_string("/tmp/ha-stat-test-flag").await {
                 if content.trim() == "on" {
                     return;
                 }
@@ -150,5 +150,5 @@ async fn daemon_publishes_discovery_and_state_and_handles_commands() {
         flag_result.is_ok(),
         "switch command never ran its on_command"
     );
-    let _ = std::fs::remove_file("/tmp/hastat-test-flag");
+    let _ = std::fs::remove_file("/tmp/ha-stat-test-flag");
 }

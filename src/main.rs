@@ -1,13 +1,13 @@
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
-use hastat::entities::Source;
-use hastat::{builtins, config, custom, mqtt};
+use ha_stat::entities::Source;
+use ha_stat::{builtins, config, custom, mqtt};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 #[derive(Parser)]
 #[command(
-    name = "hastat",
+    name = "ha-stat",
     version,
     about = "Expose laptop/system state and controls to Home Assistant over MQTT"
 )]
@@ -181,7 +181,7 @@ async fn cmd_oneshot(
     match publish_topic {
         None => println!("{payload}"),
         Some(topic) => {
-            let client_id = format!("hastat-oneshot-{}", std::process::id());
+            let client_id = format!("ha-stat-oneshot-{}", std::process::id());
             let mut opts = rumqttc::MqttOptions::new(client_id, host, port);
             if let (Some(u), Some(p)) = (username, password) {
                 opts.set_credentials(u, p);

@@ -27,7 +27,7 @@ fn default_discovery_prefix() -> String {
     "homeassistant".to_string()
 }
 fn default_base_topic() -> String {
-    "hastat".to_string()
+    "ha-stat".to_string()
 }
 fn default_interval() -> String {
     "30s".to_string()
@@ -49,7 +49,16 @@ pub struct MqttConfig {
     #[serde(default = "default_port")]
     pub port: u16,
     pub username: Option<String>,
+    /// Plaintext password. Prefer `password_file` when the config itself is
+    /// managed somewhere world-readable (e.g. the Nix store) -- see
+    /// `resolved_password`.
     pub password: Option<String>,
+    /// Path to a file whose (trimmed) contents are the MQTT password, read
+    /// at startup. Use this instead of `password` when `settings.mqtt` is
+    /// rendered into the Nix store (as the ha-stat home-manager module
+    /// does), so the secret itself can live outside the store (sops-nix,
+    /// agenix, or just a manually-deployed file with tight permissions).
+    pub password_file: Option<String>,
     #[serde(default = "default_discovery_prefix")]
     pub discovery_prefix: String,
     #[serde(default = "default_base_topic")]
@@ -60,6 +69,22 @@ pub struct MqttConfig {
     pub discovery: bool,
 }
 
+impl MqttConfig {
+    /// Resolves the effective password: the plaintext `password` if set,
+    /// otherwise the trimmed contents of `password_file`, otherwise `None`.
+    pub fn resolved_password(&self) -> Result<Option<String>> {
+        if let Some(p) = &self.password {
+            return Ok(Some(p.clone()));
+        }
+        if let Some(path) = &self.password_file {
+            let contents = std::fs::read_to_string(path)
+                .with_context(|| format!("failed to read mqtt.password_file '{path}'"))?;
+            return Ok(Some(contents.trim().to_string()));
+        }
+        Ok(None)
+    }
+}
+
 impl Default for MqttConfig {
     fn default() -> Self {
         Self {
@@ -67,6 +92,7 @@ impl Default for MqttConfig {
             port: default_port(),
             username: None,
             password: None,
+            password_file: None,
             discovery_prefix: default_discovery_prefix(),
             base_topic: default_base_topic(),
             client_id: None,
@@ -531,5 +557,33 @@ name = "x"
 "#;
         let cfg = RawConfig::from_toml_str(toml).unwrap();
         assert!(cfg.build_entities().is_err());
+    }
+
+    #[test]
+    fn resolved_password_prefers_plaintext() {
+        let mqtt = MqttConfig {
+            password: Some("plain".into()),
+            password_file: Some("/nonexistent/should-not-be-read".into()),
+            ..MqttConfig::default()
+        };
+        assert_eq!(mqtt.resolved_password().unwrap(), Some("plain".into()));
+    }
+
+    #[test]
+    fn resolved_password_reads_file_when_no_plaintext() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mqtt-password");
+        std::fs::write(&path, "from-file\n").unwrap();
+        let mqtt = MqttConfig {
+            password_file: Some(path.to_string_lossy().to_string()),
+            ..MqttConfig::default()
+        };
+        assert_eq!(mqtt.resolved_password().unwrap(), Some("from-file".into()));
+    }
+
+    #[test]
+    fn resolved_password_none_when_neither_set() {
+        let mqtt = MqttConfig::default();
+        assert_eq!(mqtt.resolved_password().unwrap(), None);
     }
 }

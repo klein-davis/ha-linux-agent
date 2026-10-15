@@ -1,16 +1,16 @@
 [package]
-name = "hastat"
+name = "ha-stat"
 version = "0.1.0"
 edition = "2021"
 description = "A Home Assistant MQTT bridge for exposing laptop/system state and controls as HA entities"
 license = "MIT"
 
 [lib]
-name = "hastat"
+name = "ha_stat"
 path = "src/lib.rs"
 
 [[bin]]
-name = "hastat"
+name = "ha-stat"
 path = "src/main.rs"
 
 [dependencies]

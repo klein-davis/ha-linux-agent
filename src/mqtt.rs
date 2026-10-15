@@ -21,7 +21,7 @@ pub async fn run_daemon(config: RawConfig) -> Result<()> {
         .map(Arc::new)
         .collect();
 
-    info!(device_id = %device_id, entity_count = entities.len(), "starting hastat daemon");
+    info!(device_id = %device_id, entity_count = entities.len(), "starting ha-stat daemon");
 
     let availability_topic = format!("{}/{}/availability", config.mqtt.base_topic, device_id);
 
@@ -29,10 +29,10 @@ pub async fn run_daemon(config: RawConfig) -> Result<()> {
         .mqtt
         .client_id
         .clone()
-        .unwrap_or_else(|| format!("hastat-{device_id}"));
+        .unwrap_or_else(|| format!("ha-stat-{device_id}"));
     let mut opts = MqttOptions::new(client_id, config.mqtt.host.clone(), config.mqtt.port);
-    if let (Some(u), Some(p)) = (&config.mqtt.username, &config.mqtt.password) {
-        opts.set_credentials(u.clone(), p.clone());
+    if let (Some(u), Some(p)) = (&config.mqtt.username, config.mqtt.resolved_password()?) {
+        opts.set_credentials(u.clone(), p);
     }
     opts.set_last_will(LastWill::new(
         availability_topic.clone(),
