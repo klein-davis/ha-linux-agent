@@ -31,18 +31,21 @@ pub fn topics_for(mqtt: &MqttConfig, device_id: &str, entity: &Entity) -> Topics
 pub fn discovery_payload(
     device: &DeviceConfig,
     device_id: &str,
-    _mqtt: &MqttConfig,
+    mqtt: &MqttConfig,
     entity: &Entity,
     topics: &Topics,
 ) -> Json {
     let mut payload = json!({
         "name": entity.name,
         "unique_id": format!("{device_id}_{}", entity.id),
-        "availability_topic": topics.availability,
-        "payload_available": "online",
-        "payload_not_available": "offline",
         "device": device_json(device, device_id),
     });
+
+    if entity.availability.unwrap_or(mqtt.availability) {
+        payload["availability_topic"] = json!(topics.availability);
+        payload["payload_available"] = json!("online");
+        payload["payload_not_available"] = json!("offline");
+    }
 
     if entity.is_readable() {
         payload["state_topic"] = json!(topics.state);
@@ -138,6 +141,7 @@ mod tests {
             base_topic: "ha-linux-agent".into(),
             client_id: None,
             discovery: true,
+            availability: true,
         }
     }
 
@@ -150,6 +154,7 @@ mod tests {
             unit: None,
             state_class: None,
             icon: None,
+            availability: None,
             interval: std::time::Duration::from_secs(5),
             min: None,
             max: None,
@@ -195,6 +200,64 @@ mod tests {
         assert_eq!(payload["payload_on"], "ON");
         assert_eq!(payload["payload_off"], "OFF");
         assert_eq!(payload["device"]["identifiers"][0], "laptop");
+    }
+
+    #[test]
+    fn availability_defaults_to_wired_but_can_be_disabled() {
+        let device = DeviceConfig {
+            name: "Laptop".into(),
+            ..Default::default()
+        };
+        let sensor = entity("battery", Component::Sensor, false, true);
+
+        let mqtt_on = mqtt();
+        let topics_on = topics_for(&mqtt_on, "laptop", &sensor);
+        let payload_on = discovery_payload(&device, "laptop", &mqtt_on, &sensor, &topics_on);
+        assert_eq!(
+            payload_on["availability_topic"],
+            "ha-linux-agent/laptop/availability"
+        );
+        assert_eq!(payload_on["payload_available"], "online");
+
+        let mqtt_off = MqttConfig {
+            availability: false,
+            ..mqtt()
+        };
+        let topics_off = topics_for(&mqtt_off, "laptop", &sensor);
+        let payload_off = discovery_payload(&device, "laptop", &mqtt_off, &sensor, &topics_off);
+        assert!(payload_off.get("availability_topic").is_none());
+        assert!(payload_off.get("payload_available").is_none());
+        assert!(payload_off.get("payload_not_available").is_none());
+    }
+
+    #[test]
+    fn per_entity_availability_overrides_global_default() {
+        let device = DeviceConfig {
+            name: "Laptop".into(),
+            ..Default::default()
+        };
+        let mqtt_off = MqttConfig {
+            availability: false,
+            ..mqtt()
+        };
+
+        // Global default is off, but this one entity opts back in -- e.g.
+        // a status sensor that should still go "unavailable" when the
+        // agent drops, even while every other sensor holds its last value.
+        let mut status = entity("session_status", Component::Sensor, false, true);
+        status.availability = Some(true);
+        let topics = topics_for(&mqtt_off, "laptop", &status);
+        let payload = discovery_payload(&device, "laptop", &mqtt_off, &status, &topics);
+        assert_eq!(
+            payload["availability_topic"],
+            "ha-linux-agent/laptop/availability"
+        );
+
+        // A plain sensor with no override still follows the global default.
+        let battery = entity("battery", Component::Sensor, false, true);
+        let topics = topics_for(&mqtt_off, "laptop", &battery);
+        let payload = discovery_payload(&device, "laptop", &mqtt_off, &battery, &topics);
+        assert!(payload.get("availability_topic").is_none());
     }
 
     #[test]

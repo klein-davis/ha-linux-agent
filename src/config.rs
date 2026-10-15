@@ -1,7 +1,7 @@
 //! TOML configuration: parsing, defaults, and turning the raw declarative
 //! config into runnable [`Entity`] values.
 
-use crate::builtins::{battery, brightness, network, system};
+use crate::builtins::{battery, brightness, network, session, system};
 use crate::custom::{
     self, CommandSource, FireAndForgetCommandSink, TemplateCommandSink, TwoStateCommandSink,
     ValueKind,
@@ -67,6 +67,15 @@ pub struct MqttConfig {
     /// Whether to publish retained HA MQTT discovery configs on startup.
     #[serde(default = "default_true")]
     pub discovery: bool,
+    /// Whether discovered entities are wired to the device's availability
+    /// topic. When true (the default), HA marks every entity "unavailable"
+    /// -- and leaves a gap in history graphs -- the moment the agent
+    /// disconnects (LWT fires "offline"). Set to false to have entities
+    /// keep showing their last retained value across disconnects instead;
+    /// you lose the "is this actually live right now" signal in exchange
+    /// for continuous-looking graphs.
+    #[serde(default = "default_true")]
+    pub availability: bool,
 }
 
 impl MqttConfig {
@@ -97,6 +106,7 @@ impl Default for MqttConfig {
             base_topic: default_base_topic(),
             client_id: None,
             discovery: true,
+            availability: true,
         }
     }
 }
@@ -111,6 +121,12 @@ struct CommonFields {
     unit: Option<String>,
     state_class: Option<String>,
     icon: Option<String>,
+    /// Per-entity override of `mqtt.availability`. Leave unset to inherit
+    /// the global default; set explicitly to pull one entity out of (or
+    /// into) availability tracking regardless of the global setting --
+    /// e.g. a `session_status` sensor that should still show
+    /// "unavailable" while everything else holds its last value.
+    availability: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -296,6 +312,7 @@ fn base(common: &CommonFields, component: Component) -> Result<Entity> {
         unit: common.unit.clone(),
         state_class: common.state_class.clone(),
         icon: common.icon.clone(),
+        availability: common.availability,
         interval: parse_interval(&common.interval)?,
         min: None,
         max: None,
@@ -340,6 +357,7 @@ fn sensor_builtin_source(name: &str, raw: &RawSensor) -> Result<Box<dyn crate::e
         "load15" => Box::new(system::LoadAverageSource { column: 2 }),
         "process_count" => Box::new(system::ProcessCountSource),
         "battery_percent" => Box::new(battery::BatteryPercentSource),
+        "session_status" => Box::new(session::SessionStatusSource),
         "disk_usage" => {
             let path = raw.path.clone().with_context(|| {
                 format!(

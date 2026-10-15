@@ -144,7 +144,12 @@ pub async fn run_daemon(config: RawConfig) -> Result<()> {
                     match entity.source.as_ref().unwrap().read().await {
                         Ok(value) => {
                             if let Err(e) = client
-                                .publish(&topics.state, QoS::AtLeastOnce, true, value.as_mqtt_payload())
+                                .publish(
+                                    &topics.state,
+                                    QoS::AtLeastOnce,
+                                    true,
+                                    value.as_mqtt_payload(),
+                                )
                                 .await
                             {
                                 error!(id = %entity.id, error = %e, "failed to republish state after reconnect");

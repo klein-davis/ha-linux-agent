@@ -80,6 +80,9 @@ pub struct Entity {
     pub unit: Option<String>,
     pub state_class: Option<String>,
     pub icon: Option<String>,
+    /// Per-entity override of `mqtt.availability`; `None` inherits the
+    /// global default.
+    pub availability: Option<bool>,
     pub interval: Duration,
     pub min: Option<f64>,
     pub max: Option<f64>,

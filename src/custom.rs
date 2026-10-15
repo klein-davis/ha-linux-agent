@@ -15,7 +15,7 @@ async fn run_shell(command: &str) -> Result<std::process::Output> {
         .with_context(|| format!("failed to spawn command: {command}"))
 }
 
-async fn run_shell_checked(command: &str) -> Result<String> {
+pub(crate) async fn run_shell_checked(command: &str) -> Result<String> {
     let output = run_shell(command).await?;
     if !output.status.success() {
         return Err(anyhow!(

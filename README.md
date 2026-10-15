@@ -159,7 +159,22 @@ port = 1883
                                                            # `settings`)
 base_topic = "ha-linux-agent"               # default
 discovery_prefix = "homeassistant"  # default
+# availability = false  # default true; see below
 ```
+
+By default every entity is wired to the device's availability topic, so HA
+marks everything "unavailable" the moment the agent disconnects (laptop
+asleep, network drop, etc.) -- which also means a gap in history/statistics
+graphs for that whole window. Set `mqtt.availability = false` to leave
+entities out of availability tracking entirely: they'll just keep showing
+their last retained value across a disconnect, trading away the "is this
+actually live right now" signal for graphs with no gaps.
+
+Any entity can override that global default with its own `availability =
+true`/`false`, regardless of what `mqtt.availability` says -- e.g. keep it
+`false` globally for continuous-looking graphs, but `true` on a dedicated
+`session_status` sensor (see below) so you still have one entity that
+honestly reports "the agent is unreachable."
 
 Every entity shares these fields:
 
@@ -168,6 +183,7 @@ Every entity shares these fields:
 | `id`          | required; used in topics and the HA unique_id         |
 | `name`        | optional; defaults to a humanized `id`                |
 | `interval`    | poll period for readable entities, e.g. `"5s"`, `"2m"` (default `30s`) |
+| `availability` | optional; overrides `mqtt.availability` for just this entity |
 | `device_class`, `unit`, `state_class`, `icon` | passed straight through to HA discovery |
 
 ### `[[sensor]]` — read-only
@@ -188,9 +204,26 @@ interval = "10s"
 
 Parameterless builtins: `cpu_usage`, `memory_usage`, `swap_usage`,
 `uptime`, `load1`, `load5`, `load15`, `process_count`, `battery_percent`,
-`brightness` (read-only here).
+`brightness` (read-only here), `session_status`.
 
 Parameterized builtin: `disk_usage` (needs `path = "/"`).
+
+`session_status` reports `"active"`, `"idle"`, or `"locked"` via
+systemd-logind (`loginctl`), on `seat0`. It deliberately doesn't try to
+report "asleep" itself -- while the laptop is actually suspended nothing is
+running to report it. Instead, pair it with `availability = true` (see
+below) so this one entity still correctly goes "unavailable" in HA when the
+agent can't be reached, while your other sensors keep showing their last
+value instead of gapping:
+
+```toml
+[[sensor]]
+id = "session_status"
+builtin = "session_status"
+interval = "10s"
+icon = "mdi:laptop"
+availability = true   # overrides mqtt.availability = false below
+```
 
 ### `[[binary_sensor]]` — read-only boolean
 
