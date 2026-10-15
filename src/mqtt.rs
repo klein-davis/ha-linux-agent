@@ -41,6 +41,14 @@ pub async fn run_daemon(config: RawConfig) -> Result<()> {
         true,
     ));
     opts.set_keep_alive(Duration::from_secs(30));
+    // Clean sessions make the broker drop our subscriptions on every
+    // reconnect, so a transient network blip silently leaves us connected
+    // but deaf to command topics until the service is restarted. Keep the
+    // session alive across reconnects instead -- client_id is stable per
+    // host, so the broker can match it back up. The ConnAck handler below
+    // still redoes subscriptions/announcements unconditionally regardless,
+    // since broker-side state can be lost independent of this flag.
+    opts.set_clean_session(false);
 
     let (client, mut eventloop) = AsyncClient::new(opts, 64);
 
@@ -107,6 +115,47 @@ pub async fn run_daemon(config: RawConfig) -> Result<()> {
     // Main event loop: dispatch incoming command-topic messages.
     loop {
         match eventloop.poll().await {
+            // Treat every ConnAck -- first connect or reconnect -- as a cue
+            // to (re)announce ourselves: resubscribe to command topics and
+            // republish availability/state. Retained messages and session
+            // state can both be lost server-side (broker restart, session
+            // expiry) independent of what clean_session asked for, so
+            // don't bother gating this on session_present -- just always
+            // redo it; subscribing/publishing retained topics we're
+            // already subscribed/current on is a harmless no-op.
+            Ok(Event::Incoming(Packet::ConnAck(_))) => {
+                info!(host = %config.mqtt.host, port = config.mqtt.port, "mqtt connected");
+
+                for cmd_topic in command_topics.keys() {
+                    if let Err(e) = client.subscribe(cmd_topic, QoS::AtLeastOnce).await {
+                        error!(topic = %cmd_topic, error = %e, "failed to resubscribe after reconnect");
+                    }
+                }
+
+                if let Err(e) = client
+                    .publish(&availability_topic, QoS::AtLeastOnce, true, "online")
+                    .await
+                {
+                    error!(error = %e, "failed to republish availability after reconnect");
+                }
+
+                for entity in entities.iter().filter(|e| e.is_readable()) {
+                    let topics = topics_for(&config.mqtt, &device_id, entity);
+                    match entity.source.as_ref().unwrap().read().await {
+                        Ok(value) => {
+                            if let Err(e) = client
+                                .publish(&topics.state, QoS::AtLeastOnce, true, value.as_mqtt_payload())
+                                .await
+                            {
+                                error!(id = %entity.id, error = %e, "failed to republish state after reconnect");
+                            }
+                        }
+                        Err(e) => {
+                            warn!(id = %entity.id, error = %e, "failed to read entity for post-reconnect republish")
+                        }
+                    }
+                }
+            }
             Ok(Event::Incoming(Packet::Publish(publish))) => {
                 let Some(entity) = command_topics.get(publish.topic.as_str()) else {
                     continue;
