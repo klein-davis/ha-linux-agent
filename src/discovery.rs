@@ -96,11 +96,11 @@ pub fn discovery_payload(
             payload["payload_off"] = json!("OFF");
         }
         Component::Notify => {
-            // Ask HA to send structured {"title": ..., "message": ...}
-            // JSON instead of just the raw message string, so NotifySink
-            // can always pull both fields out.
-            payload["command_template"] =
-                json!("{{ {\"title\": title, \"message\": message} | tojson }}");
+            // HA's MQTT notify entity only exposes the message text to the
+            // template (as `value`); `title` and `message` are undefined
+            // there and would fail to render. Wrap it as JSON anyway so
+            // NotifySink always gets the same shape (title stays empty).
+            payload["command_template"] = json!("{{ {\"message\": value} | tojson }}");
         }
         Component::Button | Component::Sensor => {}
     }
@@ -289,9 +289,9 @@ mod tests {
         let payload = discovery_payload(&device, "laptop", &mqtt, &notify, &topics);
         assert_eq!(payload["command_topic"], "ha-linux-agent/laptop/alert/set");
         assert!(payload.get("state_topic").is_none());
-        assert!(payload["command_template"]
-            .as_str()
-            .unwrap()
-            .contains("tojson"));
+        let template = payload["command_template"].as_str().unwrap();
+        assert!(template.contains("tojson"));
+        assert!(template.contains("value"));
+        assert!(!template.contains("title"));
     }
 }
